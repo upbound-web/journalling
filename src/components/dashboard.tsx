@@ -4,14 +4,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Compass, Clock, PenTool, BarChart2, Calendar, Plus, Check, X } from 'lucide-react'
+import { BookOpen, Compass, Clock, PenTool, BarChart2, Calendar, Plus, Check, X, Trash2 } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { Input } from "@/components/ui/input"
-import { subDays, format, isSameDay, addDays, differenceInDays } from 'date-fns'
+import { parseISO, format, isSameDay, subDays, addDays, differenceInDays, isAfter, isBefore, startOfDay } from 'date-fns'
+import HabitTracker from '@/components/HabitTracker'
 
 type JournalType = 'past' | 'present' | 'future' | 'stoic'
 type JournalStyle = 'selfAuthoring' | 'stoic'
@@ -21,14 +21,14 @@ type JournalEntry = {
   style: JournalStyle;
   question: string;
   content: string;
-  date: string;
+  date: string; // ISO string
 }
 
 type Habit = {
   id: string;
   name: string;
   streak: number;
-  lastCompleted: string | null;
+  lastCompleted: string | null; // ISO string or null
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042']
@@ -50,7 +50,9 @@ export default function JournalDashboard() {
 
     if (savedEntries) {
       parsedEntries = JSON.parse(savedEntries)
-      setEntries(parsedEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))
+      setEntries(parsedEntries.sort((a, b) => 
+        isAfter(parseISO(b.date), parseISO(a.date)) ? 1 : -1
+      ))
       setFilteredEntries(parsedEntries.slice(0, 3))
       calculateStats(parsedEntries)
     }
@@ -62,9 +64,9 @@ export default function JournalDashboard() {
     
     // Determine how many days to show based on the oldest entry or habit
     const oldestDate = [...parsedEntries, ...parsedHabits].reduce((oldest, item) => {
-      const itemDate = new Date(item.date || item.lastCompleted || new Date())
-      return itemDate < oldest ? itemDate : oldest
-    }, new Date())
+      const itemDate = parseISO((item as JournalEntry).date || (item as Habit).lastCompleted || new Date().toISOString());
+      return isBefore(itemDate, oldest) ? itemDate : oldest;
+    }, new Date());
 
     const daysSinceOldest = differenceInDays(new Date(), oldestDate)
     setDaysToShow(Math.min(Math.max(daysSinceOldest + 7, 30), 365))
@@ -83,15 +85,18 @@ export default function JournalDashboard() {
   }
 
   const calculateStreak = (entries: JournalEntry[]) => {
-    const sortedDates = entries.map(e => new Date(e.date).toDateString()).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+    const sortedDates = entries
+      .map(e => startOfDay(parseISO(e.date)))
+      .sort((a, b) => isAfter(b, a) ? 1 : -1)
+    
     let streak = 0
-    let currentDate = new Date()
+    let currentDate = startOfDay(new Date())
 
     for (let date of sortedDates) {
-      if (new Date(date).toDateString() === currentDate.toDateString()) {
+      if (isSameDay(date, currentDate)) {
         streak++
-        currentDate.setDate(currentDate.getDate() - 1)
-      } else if (new Date(date).toDateString() !== currentDate.toDateString()) {
+        currentDate = subDays(currentDate, 1)
+      } else if (!isSameDay(date, currentDate)) {
         break
       }
     }
@@ -127,7 +132,7 @@ export default function JournalDashboard() {
   const toggleHabit = (id: string) => {
     const updatedHabits = habits.map(habit => {
       if (habit.id === id) {
-        const today = new Date().toISOString().split('T')[0] // Format: 'YYYY-MM-DD'
+        const today = new Date().toISOString()
         if (habit.lastCompleted === today) {
           return { ...habit, streak: 0, lastCompleted: null }
         } else {
@@ -145,13 +150,13 @@ export default function JournalDashboard() {
     const startDate = subDays(today, daysToShow - 1)
     const commitData = []
 
-    for (let date = startDate; date <= today; date = addDays(date, 1)) {
+    for (let date = startDate; isBefore(date, addDays(today, 1)); date = addDays(date, 1)) {
       const formattedDate = format(date, 'yyyy-MM-dd')
       const entriesOnDate = entries.filter(entry => 
-        entry.date === formattedDate
+        isSameDay(parseISO(entry.date), date)
       )
       const habitsCompletedOnDate = habits.filter(habit => 
-        habit.lastCompleted === formattedDate
+        habit.lastCompleted && isSameDay(parseISO(habit.lastCompleted), date)
       )
       
       commitData.push({
@@ -170,6 +175,14 @@ export default function JournalDashboard() {
   const cardVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+  }
+
+  const deleteEntry = (id: string) => {
+    const updatedEntries = entries.filter(entry => entry.id !== id);
+    setEntries(updatedEntries);
+    setFilteredEntries(updatedEntries.slice(0, 3));
+    localStorage.setItem('journalEntries', JSON.stringify(updatedEntries));
+    calculateStats(updatedEntries);
   }
 
   return (
@@ -339,19 +352,19 @@ export default function JournalDashboard() {
                 <TabsTrigger value="stoic" className="bg-orange-100">Stoic</TabsTrigger>
               </TabsList>
               <TabsContent value="all">
-                <RecentEntriesList entries={filteredEntries} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
               </TabsContent>
               <TabsContent value="past">
-                <RecentEntriesList entries={filteredEntries} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
               </TabsContent>
               <TabsContent value="present">
-                <RecentEntriesList entries={filteredEntries} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
               </TabsContent>
               <TabsContent value="future">
-                <RecentEntriesList entries={filteredEntries} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
               </TabsContent>
               <TabsContent value="stoic">
-                <RecentEntriesList entries={filteredEntries} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -369,47 +382,13 @@ export default function JournalDashboard() {
         transition={{ delay: 0.5 }}
         className="mt-6"
       >
-        <Card>
-          <CardHeader>
-            <CardTitle>Habit Tracker</CardTitle>
-            <CardDescription>Track your daily habits</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex mb-4">
-              <Input
-                type="text"
-                placeholder="Add a new habit"
-                value={newHabitName}
-                onChange={(e) => setNewHabitName(e.target.value)}
-                className="mr-2"
-              />
-              <Button onClick={addHabit}><Plus className="h-4 w-4" /></Button>
-            </div>
-            <ul className="space-y-2">
-              {habits.map(habit => (
-                <li key={habit.id} className="flex items-center justify-between bg-muted p-2 rounded-md">
-                  <span>{habit.name}</span>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-muted-foreground">Streak: {habit.streak}</span>
-                    <Button
-                      size="sm"
-                      variant={habit.lastCompleted === new Date().toISOString().split('T')[0] ? "destructive" : "default"}
-                      onClick={() => toggleHabit(habit.id)}
-                    >
-                      {habit.lastCompleted === new Date().toISOString().split('T')[0] ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+        <HabitTracker habits={habits} setHabits={setHabits} />
       </motion.div>
     </div>
   )
 }
 
-function RecentEntriesList({ entries }: { entries: JournalEntry[] }) {
+function RecentEntriesList({ entries, deleteEntry }: { entries: JournalEntry[], deleteEntry: (id: string) => void }) {
   return (
     <AnimatePresence mode="wait">
       <motion.ul
@@ -426,17 +405,36 @@ function RecentEntriesList({ entries }: { entries: JournalEntry[] }) {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.1 }}
-            className={cn("bg-muted p-4 rounded-md", entry.type === 'stoic' ? 'bg-orange-100' : '', entry.type === 'past' ? 'bg-blue-100' : '', entry.type === 'present' ? 'bg-green-100' : '', entry.type === 'future' ? 'bg-yellow-100' : '')}
+            className={cn("bg-muted p-4 rounded-md", 
+              entry.type === 'stoic' ? 'bg-orange-100' : '',
+              entry.type === 'past' ? 'bg-blue-100' : '',
+              entry.type === 'present' ? 'bg-green-100' : '',
+              entry.type === 'future' ? 'bg-yellow-100' : ''
+            )}
           >
-            <div className="flex items-center space-x-2">
-              {entry.type === 'past' && <BookOpen className="h-4 w-4" />}
-              {entry.type === 'present' && <Clock className="h-4 w-4" />}
-              {entry.type === 'future' && <Compass className="h-4 w-4" />}
-              {entry.type === 'stoic' && <Compass className="h-4 w-4" />}
-              <span className="font-semibold">{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)} {entry.type === 'stoic' ? 'Journaling' : 'Authoring'}</span>
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="flex items-center space-x-2">
+                  {entry.type === 'past' && <BookOpen className="h-4 w-4" />}
+                  {entry.type === 'present' && <Clock className="h-4 w-4" />}
+                  {entry.type === 'future' && <Compass className="h-4 w-4" />}
+                  {entry.type === 'stoic' && <Compass className="h-4 w-4" />}
+                  <span className="font-semibold">{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)} {entry.type === 'stoic' ? 'Journaling' : 'Authoring'}</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {format(parseISO(entry.date), 'MMMM d, yyyy')}
+                </p>
+                <p className="mt-2 text-sm">{entry.content.slice(0, 100)}...</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => deleteEntry(entry.id)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">{new Date(entry.date).toLocaleDateString()}</p>
-            <p className="mt-2 text-sm">{entry.content.slice(0, 100)}...</p>
           </motion.li>
         ))}
       </motion.ul>

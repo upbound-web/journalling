@@ -5,8 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Compass, Clock, Trash2, Sparkles, Check, X } from 'lucide-react'
+import { BookOpen, Compass, Clock, Trash2, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { parseISO, format } from 'date-fns'
+import HabitTracker from '@/components/HabitTracker'
 
 type JournalType = 'past' | 'present' | 'future' | 'stoic'
 type JournalStyle = 'selfAuthoring' | 'stoic'
@@ -62,7 +64,7 @@ const stoicQuestions: string[] = [
 ]
 
 export default function AddNewJournal() {
-  const [step, setStep] = useState<1 | 1.5 | 2 | 3>(1)
+  const [currentStep, setCurrentStep] = useState(1)
   const [journalStyle, setJournalStyle] = useState<JournalStyle | null>(null)
   const [journalType, setJournalType] = useState<JournalType | null>(null)
   const [question, setQuestion] = useState<string>('')
@@ -70,7 +72,6 @@ export default function AddNewJournal() {
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [isSparkleVisible, setIsSparkleVisible] = useState(false)
   const [habits, setHabits] = useState<Habit[]>([])
-  const [currentStep, setCurrentStep] = useState(1)
   const router = useRouter()
 
   useEffect(() => {
@@ -110,7 +111,7 @@ export default function AddNewJournal() {
         type: journalStyle === 'stoic' ? 'stoic' : (journalType as JournalType),
         question: question,
         content: entry,
-        date: new Date().toISOString().split('T')[0] // Format: 'YYYY-MM-DD'
+        date: new Date().toISOString() // Save as ISO string
       }
       const updatedEntries = [...entries, newEntry]
       setEntries(updatedEntries)
@@ -123,7 +124,7 @@ export default function AddNewJournal() {
   }
 
   const resetJournal = () => {
-    setStep(1)
+    setCurrentStep(1)
     setJournalStyle(null)
     setJournalType(null)
     setQuestion('')
@@ -134,22 +135,6 @@ export default function AddNewJournal() {
     const updatedEntries = entries.filter(entry => entry.id !== id)
     setEntries(updatedEntries)
     localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
-  }
-
-  const toggleHabit = (id: string) => {
-    const updatedHabits = habits.map(habit => {
-      if (habit.id === id) {
-        const today = new Date().toISOString().split('T')[0] // Format: 'YYYY-MM-DD'
-        if (habit.lastCompleted === today) {
-          return { ...habit, streak: 0, lastCompleted: null }
-        } else {
-          return { ...habit, streak: habit.streak + 1, lastCompleted: today }
-        }
-      }
-      return habit
-    })
-    setHabits(updatedHabits)
-    localStorage.setItem('habits', JSON.stringify(updatedHabits))
   }
 
   const finishJournaling = () => {
@@ -257,24 +242,7 @@ export default function AddNewJournal() {
                 exit="hidden"
                 variants={contentVariants}
               >
-                <h3 className="text-lg font-semibold mb-2">Track Your Habits</h3>
-                <ul className="space-y-2">
-                  {habits.map(habit => (
-                    <li key={habit.id} className="flex items-center justify-between bg-muted p-2 rounded-md">
-                      <span>{habit.name}</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm text-muted-foreground">Streak: {habit.streak}</span>
-                        <Button
-                          size="sm"
-                          variant={habit.lastCompleted === new Date().toISOString().split('T')[0] ? "destructive" : "default"}
-                          onClick={() => toggleHabit(habit.id)}
-                        >
-                          {habit.lastCompleted === new Date().toISOString().split('T')[0] ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <HabitTracker habits={habits} setHabits={setHabits} />
               </motion.div>
             )}
           </AnimatePresence>

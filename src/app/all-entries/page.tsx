@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Compass, Clock, ArrowLeft, Search } from 'lucide-react'
+import { BookOpen, Compass, Clock, ArrowLeft, Search, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Input } from "@/components/ui/input"
@@ -49,6 +49,13 @@ export default function AllEntries() {
 
   const handleFilterChange = (filter: JournalType | 'all') => {
     setActiveFilter(filter)
+  }
+
+  const deleteEntry = (id: string) => {
+    const updatedEntries = entries.filter(entry => entry.id !== id);
+    setEntries(updatedEntries);
+    setFilteredEntries(updatedEntries);
+    localStorage.setItem('journalEntries', JSON.stringify(updatedEntries));
   }
 
   return (
@@ -111,7 +118,17 @@ export default function AllEntries() {
                     <span>{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)} {entry.type === 'stoic' ? 'Journaling' : 'Authoring'}</span>
                   </div>
                 </CardTitle>
-                <span className="text-sm text-muted-foreground">{entry.date}</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-muted-foreground">{entry.date}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteEntry(entry.id)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="font-semibold mb-2">{entry.question}</p>
