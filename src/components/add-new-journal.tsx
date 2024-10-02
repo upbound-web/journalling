@@ -152,7 +152,7 @@ export default function AddNewJournal() {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-2xl">
+    <div className="container mx-auto max-w-2xl">
       <Card>
         <CardHeader>
           <CardTitle>Reflective Journaling</CardTitle>
