@@ -9,7 +9,9 @@ services:
       - NODE_ENV=production
 
   caddy:
-    image: caddy:2
+    build:
+      context: .
+      dockerfile: Dockerfile-caddy
     container_name: caddy
     restart: always
     ports:
@@ -20,7 +22,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_API_TOKEN
     depends_on:
       - app
 

@@ -1,6 +1,7 @@
+   {
+     acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+   }
+
    journal.upserver.app {
-    tls {
-        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
-    }
      reverse_proxy app:3000
    }
