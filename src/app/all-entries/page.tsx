@@ -8,7 +8,7 @@ import { BookOpen, Compass, Clock, ArrowLeft, Search, Trash2 } from 'lucide-reac
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type JournalType = 'past' | 'present' | 'future' | 'stoic'
 type JournalStyle = 'selfAuthoring' | 'stoic'
