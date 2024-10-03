@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Compass, Clock, Trash2, Sparkles } from 'lucide-react'
+import { BookOpen, Compass, Clock, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { parseISO, format } from 'date-fns'
 import HabitTracker from '@/components/HabitTracker'
+import { useObservable } from '@legendapp/state/react'
+import { journalStore$, addJournalEntry, JournalType, JournalStyle } from '@/lib/dataLayer'
 
 type JournalType = 'past' | 'present' | 'future' | 'stoic'
 type JournalStyle = 'selfAuthoring' | 'stoic'
@@ -69,21 +70,10 @@ export default function AddNewJournal() {
   const [journalType, setJournalType] = useState<JournalType | null>(null)
   const [question, setQuestion] = useState<string>('')
   const [entry, setEntry] = useState<string>('')
-  const [entries, setEntries] = useState<JournalEntry[]>([])
   const [isSparkleVisible, setIsSparkleVisible] = useState(false)
-  const [habits, setHabits] = useState<Habit[]>([])
   const router = useRouter()
 
-  useEffect(() => {
-    const savedEntries = localStorage.getItem('journalEntries')
-    if (savedEntries) {
-      setEntries(JSON.parse(savedEntries))
-    }
-    const savedHabits = localStorage.getItem('habits')
-    if (savedHabits) {
-      setHabits(JSON.parse(savedHabits))
-    }
-  }, [])
+  const habits = useObservable(journalStore$.habits)
 
   const handleStyleSelection = (style: JournalStyle) => {
     setJournalStyle(style)
@@ -105,21 +95,19 @@ export default function AddNewJournal() {
 
   const saveEntry = () => {
     if (journalStyle && question && entry.trim()) {
-      const newEntry: JournalEntry = {
+      const newEntry = {
         id: Date.now().toString(),
         style: journalStyle,
         type: journalStyle === 'stoic' ? 'stoic' : (journalType as JournalType),
         question: question,
         content: entry,
-        date: new Date().toISOString() // Save as ISO string
+        date: new Date().toISOString()
       }
-      const updatedEntries = [...entries, newEntry]
-      setEntries(updatedEntries)
-      localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
+      addJournalEntry(newEntry)
       setEntry('')
       setIsSparkleVisible(true)
       setTimeout(() => setIsSparkleVisible(false), 2000)
-      setCurrentStep(3) // Move to habit tracking step
+      setCurrentStep(3)
     }
   }
 
@@ -129,12 +117,6 @@ export default function AddNewJournal() {
     setJournalType(null)
     setQuestion('')
     setEntry('')
-  }
-
-  const deleteEntry = (id: string) => {
-    const updatedEntries = entries.filter(entry => entry.id !== id)
-    setEntries(updatedEntries)
-    localStorage.setItem('journalEntries', JSON.stringify(updatedEntries))
   }
 
   const finishJournaling = () => {
@@ -242,7 +224,7 @@ export default function AddNewJournal() {
                 exit="hidden"
                 variants={contentVariants}
               >
-                <HabitTracker habits={habits} setHabits={setHabits} />
+                <HabitTracker />
               </motion.div>
             )}
           </AnimatePresence>

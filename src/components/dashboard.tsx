@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { BookOpen, Compass, Clock, PenTool, BarChart2, Calendar, Plus, Check, X, Trash2 } from 'lucide-react'
+import { BookOpen, Compass, Clock, PenTool, BarChart2, Calendar, Trash2 } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { useRouter } from 'next/navigation'
@@ -12,69 +12,51 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { parseISO, format, isSameDay, subDays, addDays, differenceInDays, isAfter, isBefore, startOfDay } from 'date-fns'
 import HabitTracker from '@/components/HabitTracker'
-
-type JournalType = 'past' | 'present' | 'future' | 'stoic'
-type JournalStyle = 'selfAuthoring' | 'stoic'
-type JournalEntry = {
-  id: string;
-  type: JournalType;
-  style: JournalStyle;
-  question: string;
-  content: string;
-  date: string; // ISO string
-}
-
-type Habit = {
-  id: string;
-  name: string;
-  streak: number;
-  lastCompleted: string | null; // ISO string or null
-}
+import { useObservable } from '@legendapp/state/react'
+import { journalStore$, deleteJournalEntry, JournalType, JournalEntry } from '@/lib/dataLayer'
+import { enableReactComponents } from "@legendapp/state/config/enableReactComponents"
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042']
+enableReactComponents()
 
 export default function JournalDashboard() {
-  const [entries, setEntries] = useState<JournalEntry[]>([])
+  const entries = journalStore$.entries.get()
+  const habits = journalStore$.habits.get()
+
   const [stats, setStats] = useState({ past: 0, present: 0, future: 0, stoic: 0, total: 0, streak: 0 })
   const [filteredEntries, setFilteredEntries] = useState<JournalEntry[]>([])
   const [activeFilter, setActiveFilter] = useState<JournalType | 'all'>('all')
-  const [habits, setHabits] = useState<Habit[]>([])
-  const [newHabitName, setNewHabitName] = useState('')
   const [daysToShow, setDaysToShow] = useState(30)
   const router = useRouter()
+
   useEffect(() => {
-    const savedEntries = localStorage.getItem('journalEntries')
-    const savedHabits = localStorage.getItem('habits')
-    let parsedEntries: JournalEntry[] = []
-    let parsedHabits: Habit[] = []
+    const entriesArray = entries
+    setFilteredEntries(entriesArray.slice(0, 3))
+    calculateStats(entriesArray)
 
-    if (savedEntries) {
-      parsedEntries = JSON.parse(savedEntries)
-      setEntries(parsedEntries.sort((a, b) => 
-        isAfter(parseISO(b.date), parseISO(a.date)) ? 1 : -1
-      ))
-      setFilteredEntries(parsedEntries.slice(0, 3))
-      calculateStats(parsedEntries)
-    }
-
-    if (savedHabits) {
-      parsedHabits = JSON.parse(savedHabits)
-      setHabits(parsedHabits)
-    }
-    
     // Determine how many days to show based on the oldest entry or habit
-    const oldestDate = [...parsedEntries, ...parsedHabits].reduce((oldest, item) => {
-      const itemDate = parseISO((item as JournalEntry).date || (item as Habit).lastCompleted || new Date().toISOString());
+    const oldestDate = [...entriesArray, ...habits].reduce((oldest, item) => {
+      const itemDate = parseISO(getDateValue(item, 'date') || getDateValue(item, 'lastCompleted') || new Date().toISOString());
       return isBefore(itemDate, oldest) ? itemDate : oldest;
     }, new Date());
 
     const daysSinceOldest = differenceInDays(new Date(), oldestDate)
     setDaysToShow(Math.min(Math.max(daysSinceOldest + 7, 30), 365))
-  }, []) // Empty dependency array
+  }, [entries, habits])
 
-  const calculateStats = (entries: JournalEntry[]) => {
+  const getDateValue = (item: any, key: string): string | undefined => {
+    if (typeof item[key] === 'function') {
+      return item[key]()
+    } else if (item[key] && typeof item[key].get === 'function') {
+      return item[key].get()
+    }
+    return item[key]
+  }
+
+  const calculateStats = (entries: any[]) => {
     const typeCounts = entries.reduce((acc, entry) => {
-      acc[entry.type]++
+      const type = getDateValue(entry, 'type') as JournalType
+      acc[type]++
       return acc
     }, { past: 0, present: 0, future: 0, stoic: 0 })
 
@@ -84,9 +66,9 @@ export default function JournalDashboard() {
     setStats({ ...typeCounts, total, streak })
   }
 
-  const calculateStreak = (entries: JournalEntry[]) => {
+  const calculateStreak = (entries: any[]) => {
     const sortedDates = entries
-      .map(e => startOfDay(parseISO(e.date)))
+      .map(e => startOfDay(parseISO(getDateValue(e, 'date') || '')))
       .sort((a, b) => isAfter(b, a) ? 1 : -1)
     
     let streak = 0
@@ -105,44 +87,19 @@ export default function JournalDashboard() {
   }
 
   const handleFilterChange = (filter: JournalType | 'all') => {
-    setActiveFilter(filter)
+    setActiveFilter(filter);
     if (filter === 'all') {
-      setFilteredEntries(entries.slice(0, 3))
+      setFilteredEntries(entries.slice(0, 3));
     } else {
-      const filtered = entries.filter(entry => entry.type === filter).slice(0, 3)
-      setFilteredEntries(filtered)
+      const filtered = entries
+        .filter(entry => getEntryType(entry) === filter)
+        .slice(0, 3);
+      setFilteredEntries(filtered);
     }
   }
 
-  const addHabit = () => {
-    if (newHabitName.trim()) {
-      const newHabit: Habit = {
-        id: Date.now().toString(),
-        name: newHabitName.trim(),
-        streak: 0,
-        lastCompleted: null
-      }
-      const updatedHabits = [...habits, newHabit]
-      setHabits(updatedHabits)
-      localStorage.setItem('habits', JSON.stringify(updatedHabits))
-      setNewHabitName('')
-    }
-  }
-
-  const toggleHabit = (id: string) => {
-    const updatedHabits = habits.map(habit => {
-      if (habit.id === id) {
-        const today = new Date().toISOString()
-        if (habit.lastCompleted === today) {
-          return { ...habit, streak: 0, lastCompleted: null }
-        } else {
-          return { ...habit, streak: habit.streak + 1, lastCompleted: today }
-        }
-      }
-      return habit
-    })
-    setHabits(updatedHabits)
-    localStorage.setItem('habits', JSON.stringify(updatedHabits))
+  const handleDeleteEntry = (id: string) => {
+    deleteJournalEntry(id)
   }
 
   const generateCommitData = () => {
@@ -153,11 +110,12 @@ export default function JournalDashboard() {
     for (let date = startDate; isBefore(date, addDays(today, 1)); date = addDays(date, 1)) {
       const formattedDate = format(date, 'yyyy-MM-dd')
       const entriesOnDate = entries.filter(entry => 
-        isSameDay(parseISO(entry.date), date)
+        isSameDay(parseISO(getDateValue(entry, 'date') || ''), date)
       )
-      const habitsCompletedOnDate = habits.filter(habit => 
-        habit.lastCompleted && isSameDay(parseISO(habit.lastCompleted), date)
-      )
+      const habitsCompletedOnDate = habits.filter(habit => {
+        const lastCompleted = getDateValue(habit, 'lastCompleted')
+        return lastCompleted && isSameDay(parseISO(lastCompleted), date)
+      })
       
       commitData.push({
         date: formattedDate,
@@ -169,20 +127,11 @@ export default function JournalDashboard() {
     return commitData
   }
 
-  // Move this outside of useEffect
   const commitData = useMemo(() => generateCommitData(), [entries, habits, daysToShow])
 
   const cardVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
-  }
-
-  const deleteEntry = (id: string) => {
-    const updatedEntries = entries.filter(entry => entry.id !== id);
-    setEntries(updatedEntries);
-    setFilteredEntries(updatedEntries.slice(0, 3));
-    localStorage.setItem('journalEntries', JSON.stringify(updatedEntries));
-    calculateStats(updatedEntries);
   }
 
   return (
@@ -352,19 +301,19 @@ export default function JournalDashboard() {
                 <TabsTrigger value="stoic" className="bg-orange-100">Stoic</TabsTrigger>
               </TabsList>
               <TabsContent value="all">
-                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={handleDeleteEntry} />
               </TabsContent>
               <TabsContent value="past">
-                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={handleDeleteEntry} />
               </TabsContent>
               <TabsContent value="present">
-                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={handleDeleteEntry} />
               </TabsContent>
               <TabsContent value="future">
-                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={handleDeleteEntry} />
               </TabsContent>
               <TabsContent value="stoic">
-                <RecentEntriesList entries={filteredEntries} deleteEntry={deleteEntry} />
+                <RecentEntriesList entries={filteredEntries} deleteEntry={handleDeleteEntry} />
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -382,62 +331,75 @@ export default function JournalDashboard() {
         transition={{ delay: 0.5 }}
         className="mt-6"
       >
-        <HabitTracker habits={habits} setHabits={setHabits} />
+        <HabitTracker />
       </motion.div>
     </div>
   )
 }
 
 function RecentEntriesList({ entries, deleteEntry }: { entries: JournalEntry[], deleteEntry: (id: string) => void }) {
+  const getObservableValue = (value: any) => {
+    return typeof value === 'function' ? value() : value?.get?.() ?? value;
+  };
+
   return (
     <AnimatePresence mode="wait">
       <motion.ul
-        key={entries.map(e => e.id).join(',')}
+        key={entries.map(e => getObservableValue(e.id)).join(',')}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.3 }}
         className="space-y-4"
       >
-        {entries.map((entry, index) => (
-          <motion.li 
-            key={entry.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.1 }}
-            className={cn("bg-muted p-4 rounded-md", 
-              entry.type === 'stoic' ? 'bg-orange-100' : '',
-              entry.type === 'past' ? 'bg-blue-100' : '',
-              entry.type === 'present' ? 'bg-green-100' : '',
-              entry.type === 'future' ? 'bg-yellow-100' : ''
-            )}
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center space-x-2">
-                  {entry.type === 'past' && <BookOpen className="h-4 w-4" />}
-                  {entry.type === 'present' && <Clock className="h-4 w-4" />}
-                  {entry.type === 'future' && <Compass className="h-4 w-4" />}
-                  {entry.type === 'stoic' && <Compass className="h-4 w-4" />}
-                  <span className="font-semibold">{entry.type.charAt(0).toUpperCase() + entry.type.slice(1)} {entry.type === 'stoic' ? 'Journaling' : 'Authoring'}</span>
+        {entries.map((entry, index) => {
+          const type = getObservableValue(entry.type);
+          const id = getObservableValue(entry.id);
+          const date = getObservableValue(entry.date);
+          const content = getObservableValue(entry.content);
+
+          return (
+            <motion.li 
+              key={id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.1 }}
+              className={cn("bg-muted p-4 rounded-md", 
+                type === 'stoic' ? 'bg-orange-100' : '',
+                type === 'past' ? 'bg-blue-100' : '',
+                type === 'present' ? 'bg-green-100' : '',
+                type === 'future' ? 'bg-yellow-100' : ''
+              )}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    {type === 'past' && <BookOpen className="h-4 w-4" />}
+                    {type === 'present' && <Clock className="h-4 w-4" />}
+                    {type === 'future' && <Compass className="h-4 w-4" />}
+                    {type === 'stoic' && <Compass className="h-4 w-4" />}
+                    <span className="font-semibold">
+                      {type.charAt(0).toUpperCase() + type.slice(1)} {type === 'stoic' ? 'Journaling' : 'Authoring'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {format(parseISO(date), 'MMMM d, yyyy')}
+                  </p>
+                  <p className="mt-2 text-sm">{content.slice(0, 100)}...</p>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {format(parseISO(entry.date), 'MMMM d, yyyy')}
-                </p>
-                <p className="mt-2 text-sm">{entry.content.slice(0, 100)}...</p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => deleteEntry(id)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => deleteEntry(entry.id)}
-                className="text-red-500 hover:text-red-700"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.li>
-        ))}
+            </motion.li>
+          );
+        })}
       </motion.ul>
     </AnimatePresence>
-  )
+  );
 }
