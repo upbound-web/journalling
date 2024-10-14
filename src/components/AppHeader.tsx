@@ -29,7 +29,6 @@ export default function AppHeader() {
           {user ? (
             <div className="flex items-center space-x-4">
               <span>{user.email}</span>
-              <span>{user.id}</span>
               <Button onClick={handleLogout}>Logout</Button>
             </div>
           ) : (

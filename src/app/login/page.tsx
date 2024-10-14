@@ -11,17 +11,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
   const { user, isLoading: loading } = db.useAuth();
 
   useEffect(() => {
     if (!loading && user) {
-      router.push("/");
+      window.location.href = "/";
     }
-  }, [user, loading, router]);
+  }, [user, loading]);
 
   const [email, setEmail] = useState("");
   const [magicCode, setMagicCode] = useState("");
@@ -45,7 +44,7 @@ export default function LoginPage() {
     try {
       await db.auth.signInWithMagicCode({ email, code: magicCode });
       setMessage("Login successful!");
-      router.push("/"); // Redirect to home page or dashboard
+      window.location.href = "/"; // Use window.location for a full page reload
     } catch (error) {
       setMessage("Error verifying magic code. Please try again.");
       console.error("Verify magic code error:", error);

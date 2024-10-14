@@ -74,7 +74,6 @@ export default function JournalDashboard() {
   });
   const router = useRouter();
 
-  // Query journal entries and habits from InstantDB
   const {
     data,
     isLoading: dataLoading,
@@ -83,8 +82,9 @@ export default function JournalDashboard() {
     journalEntries: {
       $: {
         where: { userId: user?.id },
-        // sort: [{ date: "desc" }],
-        // limit: 100, // Adjust this limit as needed
+        order: {
+          serverCreatedAt: "desc",
+        },
       },
     },
     habits: {
@@ -96,8 +96,6 @@ export default function JournalDashboard() {
 
   const entries = data?.journalEntries || [];
   const habits = data?.habits || [];
-  console.log(habits);
-  console.log(entries);
 
   useEffect(() => {
     if (entries.length > 0) {
