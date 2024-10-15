@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,9 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { db } from "@/lib/db";
+import { tx } from "@instantdb/react";
+import { parseISO, format } from "date-fns";
 
 type JournalType = "past" | "present" | "future" | "stoic";
 type JournalStyle = "selfAuthoring" | "stoic";
@@ -28,46 +31,72 @@ type JournalEntry = {
   date: string;
 };
 
+type FilterCriteria = {
+  activeFilter: JournalType | "all";
+  searchTerm: string;
+};
+
+const getFilteredEntries = (
+  entries: JournalEntry[],
+  criteria: FilterCriteria
+) => {
+  const { activeFilter, searchTerm } = criteria;
+  if (entries.length === 0) return [];
+
+  const lowerCaseSearch = searchTerm.toLowerCase();
+
+  return entries.filter((entry) => {
+    const matchesFilter = activeFilter === "all" || entry.type === activeFilter;
+    const matchesSearch =
+      entry.content.toLowerCase().includes(lowerCaseSearch) ||
+      entry.question.toLowerCase().includes(lowerCaseSearch);
+    return matchesFilter && matchesSearch;
+  });
+};
+
 export default function AllEntries() {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [filteredEntries, setFilteredEntries] = useState<JournalEntry[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<JournalType | "all">("all");
   const router = useRouter();
 
-  useEffect(() => {
-    const savedEntries = localStorage.getItem("journalEntries");
-    if (savedEntries) {
-      const parsedEntries = JSON.parse(savedEntries);
-      const sortedEntries = parsedEntries.sort(
-        (a: JournalEntry, b: JournalEntry) =>
-          new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-      setEntries(sortedEntries);
-      setFilteredEntries(sortedEntries);
-    }
-  }, []);
+  const { isLoading: authLoading, user, error: authError } = db.useAuth();
+  const {
+    data,
+    isLoading: dataLoading,
+    error: dataError,
+  } = db.useQuery({
+    journalEntries: {
+      $: {
+        where: { userId: user?.id },
+        order: {
+          serverCreatedAt: "desc",
+        },
+      },
+    },
+  });
 
-  useEffect(() => {
-    const filtered = entries.filter(
-      (entry) =>
-        (activeFilter === "all" || entry.type === activeFilter) &&
-        (entry.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          entry.question.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-    setFilteredEntries(filtered);
-  }, [searchTerm, activeFilter, entries]);
+  const entries = data?.journalEntries || [];
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.target.value;
+  };
+
+  const filteredEntries = useMemo(
+    () => getFilteredEntries(entries, { activeFilter, searchTerm }),
+    [entries, activeFilter, searchTerm]
+  );
 
   const handleFilterChange = (filter: JournalType | "all") => {
     setActiveFilter(filter);
   };
 
   const deleteEntry = (id: string) => {
-    const updatedEntries = entries.filter((entry) => entry.id !== id);
-    setEntries(updatedEntries);
-    setFilteredEntries(updatedEntries);
-    localStorage.setItem("journalEntries", JSON.stringify(updatedEntries));
+    db.transact([tx.journalEntries[id].delete()]);
   };
+
+  if (authLoading || dataLoading) return <div>Loading...</div>;
+  if (authError || dataError)
+    return <div>Error: {(authError || dataError)?.message}</div>;
 
   return (
     <div className="container mx-auto p-4 max-w-4xl">
@@ -90,8 +119,7 @@ export default function AllEntries() {
           <Input
             type="text"
             placeholder="Search entries..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
             className="pl-10"
           />
         </div>
@@ -140,8 +168,9 @@ export default function AllEntries() {
                   <div className="flex items-center space-x-2">
                     {entry.type === "past" && <BookOpen className="h-4 w-4" />}
                     {entry.type === "present" && <Clock className="h-4 w-4" />}
-                    {entry.type === "future" && <Compass className="h-4 w-4" />}
-                    {entry.type === "stoic" && <Compass className="h-4 w-4" />}
+                    {(entry.type === "future" || entry.type === "stoic") && (
+                      <Compass className="h-4 w-4" />
+                    )}
                     <span>
                       {entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}{" "}
                       {entry.type === "stoic" ? "Journaling" : "Authoring"}
@@ -150,7 +179,7 @@ export default function AllEntries() {
                 </CardTitle>
                 <div className="flex items-center space-x-2">
                   <span className="text-sm text-muted-foreground">
-                    {entry.date}
+                    {format(parseISO(entry.date), "MMMM d, yyyy")}
                   </span>
                   <Button
                     variant="ghost"

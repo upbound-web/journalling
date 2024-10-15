@@ -9,10 +9,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Plus, Check, X } from "lucide-react";
+import { Plus, Check, X, MoreHorizontal } from "lucide-react"; // Updated icon
 import { parseISO, isSameDay, format } from "date-fns";
 import { db } from "@/lib/db";
 import { id, tx } from "@instantdb/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Importing shadcn DropdownMenu components
+import { useToast } from "@/hooks/use-toast";
 
 type Habit = {
   id: string;
@@ -23,29 +32,22 @@ type Habit = {
   userId: string;
 };
 
-type QueryResult = {
-  habits: Habit[];
-};
-
 export default function HabitTracker() {
   const [newHabitName, setNewHabitName] = useState("");
-
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [editHabitName, setEditHabitName] = useState("");
   const { user } = db.useAuth();
+  const { toast } = useToast();
 
   const { data, isLoading, error } = db.useQuery({
     habits: {
       $: {
         where: { userId: user?.id },
       },
-      // Remove the 'where' clause for now
     },
   });
 
   const habits = data?.habits;
-
-  // Manually filter habits based on userId
-  // const habits =
-  //   data?.habits?.filter((habit) => habit.userId === user?.id) ?? [];
 
   const addHabit = () => {
     if (newHabitName.trim() && user) {
@@ -59,6 +61,10 @@ export default function HabitTracker() {
       };
       db.transact([tx.habits[newHabit.id].update(newHabit)]);
       setNewHabitName("");
+      toast({
+        title: "Habit Added",
+        description: `Added "${newHabit.name}" to your habits.`,
+      });
     }
   };
 
@@ -90,6 +96,44 @@ export default function HabitTracker() {
     }
 
     db.transact([tx.habits[habit.id].update(updatedHabit)]);
+  };
+
+  // Function to delete a habit
+  const deleteHabit = (habitId: string) => {
+    if (confirm("Are you sure you want to delete this habit?")) {
+      db.transact([tx.habits[habitId].delete()]);
+      toast({
+        title: "Habit Deleted",
+        description: "The habit has been successfully deleted.",
+      });
+    }
+  };
+
+  // Function to initiate editing a habit
+  const initiateEditHabit = (habit: Habit) => {
+    setEditingHabit(habit);
+    setEditHabitName(habit.name);
+  };
+
+  // Function to save the edited habit
+  const saveEditedHabit = () => {
+    if (editingHabit && editHabitName.trim()) {
+      db.transact([
+        tx.habits[editingHabit.id].update({ name: editHabitName.trim() }),
+      ]);
+      toast({
+        title: "Habit Updated",
+        description: `Updated habit to "${editHabitName.trim()}".`,
+      });
+      setEditingHabit(null);
+      setEditHabitName("");
+    }
+  };
+
+  // Function to cancel editing
+  const cancelEdit = () => {
+    setEditingHabit(null);
+    setEditHabitName("");
   };
 
   if (isLoading) return <div>Loading habits...</div>;
@@ -144,15 +188,56 @@ export default function HabitTracker() {
                         <Check className="h-4 w-4" />
                       )}
                     </Button>
+                    {/* Dropdown Menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Options</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          onClick={() => initiateEditHabit(habit)}
+                        >
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => deleteHabit(habit.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </motion.li>
               );
             })
           ) : (
-            <div>No Habbits</div>
+            <div>No Habits</div>
           )}
         </ul>
       </CardContent>
+
+      {/* Edit Habit Modal */}
+      {editingHabit && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-md shadow-lg">
+            <h2 className="text-lg font-semibold mb-4">Edit Habit</h2>
+            <Input
+              type="text"
+              value={editHabitName}
+              onChange={(e) => setEditHabitName(e.target.value)}
+              className="mb-4"
+            />
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={cancelEdit}>
+                Cancel
+              </Button>
+              <Button onClick={saveEditedHabit}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
