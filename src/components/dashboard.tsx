@@ -164,22 +164,21 @@ export default function JournalDashboard() {
   };
 
   const generateCommitData = () => {
-    const today = new Date();
+    const today = startOfDay(new Date());
     const startDate = subDays(today, daysToShow - 1);
     const commitData = [];
 
-    for (
-      let date = startDate;
-      isBefore(date, addDays(today, 1));
-      date = addDays(date, 1)
-    ) {
+    for (let date = startDate; !isAfter(date, today); date = addDays(date, 1)) {
       const formattedDate = format(date, "yyyy-MM-dd");
       const entriesOnDate = entries.filter((entry) =>
         isSameDay(parseISO(entry.date), date)
       );
       const habitsCompletedOnDate = habits.filter(
         (habit) =>
-          habit.lastCompleted && isSameDay(parseISO(habit.lastCompleted), date)
+          habit.completedDates &&
+          habit.completedDates.some((completedDate) =>
+            isSameDay(parseISO(completedDate), date)
+          )
       );
 
       commitData.push({
