@@ -20,6 +20,7 @@ import {
   BarChart2,
   Calendar,
   Trash2,
+  Edit3,
 } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -40,8 +41,14 @@ import {
 import HabitTracker from "@/components/HabitTracker";
 import { tx } from "@instantdb/react";
 
-type JournalType = "past" | "present" | "future" | "stoic";
-type JournalStyle = "selfAuthoring" | "stoic";
+type JournalType =
+  | "past"
+  | "present"
+  | "future"
+  | "stoic"
+  | "weeklyReflection"
+  | "weeklyPlan";
+type JournalStyle = "selfAuthoring" | "stoic" | "weekly";
 type JournalEntry = {
   id: string;
   type: JournalType;
@@ -49,6 +56,9 @@ type JournalEntry = {
   question: string;
   content: string;
   date: string; // ISO string
+  obstacles?: string[];
+  weekNumber?: number;
+  weekYear?: number;
 };
 
 type Habit = {
@@ -73,6 +83,14 @@ export default function JournalDashboard() {
     streak: 0,
   });
   const router = useRouter();
+
+  const [weeklyEntries, setWeeklyEntries] = useState<{
+    reflection: JournalEntry | null;
+    plan: JournalEntry | null;
+  }>({
+    reflection: null,
+    plan: null,
+  });
 
   const {
     data,
@@ -101,6 +119,9 @@ export default function JournalDashboard() {
     if (entries.length > 0) {
       setFilteredEntries(entries.slice(0, 3));
       calculateStats(entries);
+
+      // Find most recent weekly entries
+      findMostRecentWeeklyEntries(entries);
     }
 
     // Determine how many days to show based on the oldest entry or habit
@@ -123,7 +144,14 @@ export default function JournalDashboard() {
         acc[entry.type]++;
         return acc;
       },
-      { past: 0, present: 0, future: 0, stoic: 0 }
+      {
+        past: 0,
+        present: 0,
+        future: 0,
+        stoic: 0,
+        weeklyReflection: 0,
+        weeklyPlan: 0,
+      } as Record<JournalType, number>
     );
 
     const total = entries.length;
@@ -140,7 +168,7 @@ export default function JournalDashboard() {
     let streak = 0;
     let currentDate = startOfDay(new Date());
 
-    for (let date of sortedDates) {
+    for (const date of sortedDates) {
       if (isSameDay(date, currentDate)) {
         streak++;
         currentDate = subDays(currentDate, 1);
@@ -196,6 +224,41 @@ export default function JournalDashboard() {
     [entries, habits, daysToShow]
   );
 
+  const findMostRecentWeeklyEntries = (entries: JournalEntry[]) => {
+    // Get current week
+    const now = new Date();
+    const currentDate = new Date(
+      Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+    );
+    currentDate.setUTCDate(
+      currentDate.getUTCDate() + 4 - (currentDate.getUTCDay() || 7)
+    );
+    const yearStart = new Date(Date.UTC(currentDate.getUTCFullYear(), 0, 1));
+    const currentWeekNumber = Math.ceil(
+      ((currentDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+    );
+    const currentYear = currentDate.getUTCFullYear();
+
+    // Find most recent weekly reflection and plan
+    const reflection =
+      entries.find(
+        (entry) =>
+          entry.type === "weeklyReflection" &&
+          entry.weekNumber === currentWeekNumber &&
+          entry.weekYear === currentYear
+      ) || null;
+
+    const plan =
+      entries.find(
+        (entry) =>
+          entry.type === "weeklyPlan" &&
+          entry.weekNumber === currentWeekNumber &&
+          entry.weekYear === currentYear
+      ) || null;
+
+    setWeeklyEntries({ reflection, plan });
+  };
+
   const cardVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -223,6 +286,268 @@ export default function JournalDashboard() {
         </motion.h1>
         <Button onClick={() => router.push("/add-new")}>Add New Entry</Button>
       </div>
+
+      {/* Weekly Dashboard Section - show at the top */}
+      <motion.div
+        className="mb-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <h2 className="text-xl font-semibold mb-4">This Week</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card
+            className={cn(
+              "transition-all",
+              weeklyEntries.reflection
+                ? "border-t-4 border-teal-500 dark:border-teal-400"
+                : "bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700"
+            )}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg">🧘‍♀️ Weekly Reflection</CardTitle>
+                {weeklyEntries.reflection && weeklyEntries.reflection.id && (
+                  <Link
+                    href={`/add-new?editId=${weeklyEntries.reflection.id}&typeToEdit=weeklyReflection`}
+                  >
+                    <Button variant="outline" size="sm">
+                      <Edit3 className="h-4 w-4 mr-2" />
+                      Edit Reflection
+                    </Button>
+                  </Link>
+                )}
+                {!weeklyEntries.reflection && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      router.push(
+                        "/add-new?style=weekly&type=weeklyReflection"
+                      ); // Navigate to prefill weekly reflection
+                    }}
+                  >
+                    Add
+                  </Button>
+                )}
+              </div>
+              <CardDescription>
+                {weeklyEntries.reflection
+                  ? format(
+                      parseISO(weeklyEntries.reflection.date),
+                      "MMMM d, yyyy"
+                    )
+                  : "Not completed yet"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {weeklyEntries.reflection ? (
+                (() => {
+                  let accomplishmentText = "";
+                  let learnedText = "";
+                  let thoughtText = "";
+                  let currentContent = weeklyEntries.reflection!.content; // Assert non-null as we are in the 'if' block
+
+                  const thoughtMarker = "\\n\\nTHOUGHT:";
+                  const learnedMarker = "\\n\\nLEARNED:";
+
+                  if (currentContent.includes(thoughtMarker)) {
+                    const parts = currentContent.split(thoughtMarker);
+                    thoughtText = parts[1]?.trim() || "";
+                    currentContent = parts[0];
+                  }
+                  if (currentContent.includes(learnedMarker)) {
+                    const parts = currentContent.split(learnedMarker);
+                    learnedText = parts[1]?.trim() || "";
+                    currentContent = parts[0];
+                  }
+                  accomplishmentText = currentContent.trim();
+
+                  return (
+                    <div className="space-y-2">
+                      {accomplishmentText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                            🎉 Biggest accomplishment:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {accomplishmentText}
+                          </p>
+                        </div>
+                      )}
+
+                      {learnedText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                            🧠 What I learned:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {learnedText}
+                          </p>
+                        </div>
+                      )}
+
+                      {thoughtText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                            🤔 Interesting thought:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {thoughtText}
+                          </p>
+                        </div>
+                      )}
+
+                      {weeklyEntries.reflection!.obstacles &&
+                        weeklyEntries.reflection!.obstacles.length > 0 && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-teal-700 dark:text-teal-400">
+                              🚧 Obstacles faced:
+                            </h3>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {weeklyEntries.reflection!.obstacles.map(
+                                (obstacle) => (
+                                  <span
+                                    key={obstacle}
+                                    className="px-2 py-0.5 bg-secondary text-secondary-foreground rounded-full text-xs"
+                                  >
+                                    {obstacle
+                                      .replace(/([A-Z])/g, " $1")
+                                      .replace(/^./, (str) =>
+                                        str.toUpperCase()
+                                      )}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="text-sm text-muted-foreground italic">
+                  Take time to reflect on your week.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card
+            className={cn(
+              "transition-all",
+              weeklyEntries.plan
+                ? "border-t-4 border-purple-500 dark:border-purple-400"
+                : "bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700"
+            )}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-lg">🎯 Weekly Plan</CardTitle>
+                {weeklyEntries.plan && weeklyEntries.plan.id && (
+                  <Link
+                    href={`/add-new?editId=${weeklyEntries.plan.id}&typeToEdit=weeklyPlan`}
+                  >
+                    <Button variant="outline" size="sm">
+                      <Edit3 className="h-4 w-4 mr-2" />
+                      Edit Plan
+                    </Button>
+                  </Link>
+                )}
+                {!weeklyEntries.plan && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      router.push("/add-new?style=weekly&type=weeklyPlan");
+                    }}
+                  >
+                    Add
+                  </Button>
+                )}
+              </div>
+              <CardDescription>
+                {weeklyEntries.plan
+                  ? format(parseISO(weeklyEntries.plan.date), "MMMM d, yyyy")
+                  : "Not planned yet"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {weeklyEntries.plan ? (
+                (() => {
+                  let primaryGoalText = "";
+                  let potentialObstaclesText = "";
+                  let strategiesText = "";
+                  let currentContent = weeklyEntries.plan!.content;
+
+                  const strategiesMarker = "\\n\\nSTRATEGIES:";
+                  const obstaclesMarker = "\\n\\nPOTENTIAL OBSTACLES:";
+                  const goalMarker = "PRIMARY GOAL:"; // No \n\n needed if it's at the start
+
+                  if (currentContent.includes(strategiesMarker)) {
+                    const parts = currentContent.split(strategiesMarker);
+                    strategiesText = parts[1]?.trim() || "";
+                    currentContent = parts[0];
+                  }
+                  if (currentContent.includes(obstaclesMarker)) {
+                    const parts = currentContent.split(obstaclesMarker);
+                    potentialObstaclesText = parts[1]?.trim() || "";
+                    currentContent = parts[0];
+                  }
+                  // The rest is the primary goal, remove prefix if present
+                  if (currentContent.startsWith(goalMarker)) {
+                    primaryGoalText = currentContent
+                      .substring(goalMarker.length)
+                      .trim();
+                  } else {
+                    primaryGoalText = currentContent.trim();
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {primaryGoalText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-purple-700 dark:text-purple-400">
+                            🌟 Primary Goal for the Week:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {primaryGoalText}
+                          </p>
+                        </div>
+                      )}
+                      {potentialObstaclesText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-purple-700 dark:text-purple-400">
+                            🧐 Potential Obstacles:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {potentialObstaclesText}
+                          </p>
+                        </div>
+                      )}
+                      {strategiesText && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-purple-700 dark:text-purple-400">
+                            🛠️ My Strategies:
+                          </h3>
+                          <p className="text-sm whitespace-pre-line">
+                            {strategiesText}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="text-sm text-muted-foreground italic">
+                  Plan your focus areas for the week ahead.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </motion.div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <motion.div variants={cardVariants} initial="hidden" animate="visible">
           <Card>

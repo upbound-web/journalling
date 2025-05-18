@@ -35,7 +35,6 @@ export default function AddNew() {
         </motion.h1>
       </div>
       <div className="flex-grow justify-center items-center">
-        <p>AddNewJournal component should appear below:</p>
         <AddNewJournal />
       </div>
     </div>

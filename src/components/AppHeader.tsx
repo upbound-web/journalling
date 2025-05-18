@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
+import { Calendar, PenTool } from "lucide-react";
 
 export default function AppHeader() {
   const router = useRouter();
@@ -20,16 +21,39 @@ export default function AppHeader() {
   };
 
   return (
-    <header className="bg-gray-100 py-4">
+    <header className="bg-gray-100 dark:bg-gray-800 py-4 shadow-md sticky top-0 z-50">
       <div className="container mx-auto flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold">
+        <Link
+          href="/"
+          className="text-xl font-bold text-gray-800 dark:text-white"
+        >
           Journal App
         </Link>
         <div>
           {user ? (
             <div className="flex items-center space-x-4">
-              <span>{user.email}</span>
-              <Button onClick={handleLogout}>Logout</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/add-new")}
+                className="flex items-center"
+              >
+                <PenTool className="h-4 w-4 mr-1" />
+                <span>New Entry</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/weekly")}
+                className="flex items-center"
+              >
+                <Calendar className="h-4 w-4 mr-1" />
+                <span>Weekly</span>
+              </Button>
+              <span className="hidden md:inline">{user.email}</span>
+              <Button onClick={handleLogout} size="sm">
+                Logout
+              </Button>
             </div>
           ) : (
             <Link href="/login">
