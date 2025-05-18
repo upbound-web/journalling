@@ -38,8 +38,8 @@ export default function AppHeader() {
                 onClick={() => router.push("/add-new")}
                 className="flex items-center"
               >
-                <PenTool className="h-4 w-4 mr-1" />
-                <span>New Entry</span>
+                <PenTool className="h-4 w-4 mr-1 md:mr-1" />
+                <span className="hidden md:inline">New Entry</span>
               </Button>
               <Button
                 variant="outline"
@@ -47,8 +47,8 @@ export default function AppHeader() {
                 onClick={() => router.push("/weekly")}
                 className="flex items-center"
               >
-                <Calendar className="h-4 w-4 mr-1" />
-                <span>Weekly</span>
+                <Calendar className="h-4 w-4 mr-1 md:mr-1" />
+                <span className="hidden md:inline">Weekly</span>
               </Button>
               <span className="hidden md:inline">{user.email}</span>
               <Button onClick={handleLogout} size="sm">

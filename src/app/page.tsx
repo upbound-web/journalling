@@ -24,9 +24,10 @@ function EmailStep({ onSendEmail }: { onSendEmail: (email: string) => void }) {
     try {
       await db.auth.sendMagicCode({ email });
       onSendEmail(email);
-    } catch (err: any) {
+    } catch (err) {
+      const error = err as { body?: { message?: string } };
       setError(
-        err.body?.message || "Failed to send magic code. Please try again."
+        error.body?.message || "Failed to send magic code. Please try again."
       );
       onSendEmail(""); // Reset sentEmail if sending failed
     } finally {
@@ -85,9 +86,10 @@ function CodeStep({
     try {
       await db.auth.signInWithMagicCode({ email: sentEmail, code });
       // Successful sign-in will trigger a re-render by useAuth
-    } catch (err: any) {
+    } catch (err) {
+      const error = err as { body?: { message?: string } };
       if (inputRef.current) inputRef.current.value = "";
-      setError(err.body?.message || "Invalid code. Please try again.");
+      setError(error.body?.message || "Invalid code. Please try again.");
     } finally {
       setIsVerifying(false);
     }
@@ -142,12 +144,13 @@ export default function Home() {
 
   const handleResendCode = () => {
     if (sentEmail) {
-      db.auth.sendMagicCode({ email: sentEmail }).catch((err: any) => {
+      db.auth.sendMagicCode({ email: sentEmail }).catch((err) => {
+        const error = err as { body?: { message?: string } };
         // Optionally show an error to the user if resend fails
-        console.error("Failed to resend code:", err);
+        console.error("Failed to resend code:", error);
         alert(
           "Failed to resend code: " +
-            (err.body?.message || "Please try again later.")
+            (error.body?.message || "Please try again later.")
         );
       });
     }
