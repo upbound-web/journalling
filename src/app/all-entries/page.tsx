@@ -20,8 +20,16 @@ import { db } from "@/lib/db";
 import { tx } from "@instantdb/react";
 import { parseISO, format } from "date-fns";
 
-type JournalType = "past" | "present" | "future" | "stoic";
-type JournalStyle = "selfAuthoring" | "stoic";
+type JournalType =
+  | "past"
+  | "present"
+  | "future"
+  | "stoic"
+  | "weeklyReflection"
+  | "weeklyPlan";
+
+type JournalStyle = "selfAuthoring" | "stoic" | "weekly";
+
 type JournalEntry = {
   id: string;
   type: JournalType;
@@ -29,6 +37,10 @@ type JournalEntry = {
   question: string;
   content: string;
   date: string;
+  obstacles?: string[];
+  weekNumber?: number;
+  weekYear?: number;
+  userId?: string;
 };
 
 type FilterCriteria = {
@@ -78,7 +90,7 @@ export default function AllEntries() {
   const entries = data?.journalEntries || [];
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.target.value;
+    setSearchTerm(e.target.value);
   };
 
   const filteredEntries = useMemo(
